@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<script>
+      // --- Backend-matching DJB2 hash (must be top-level for all uses) ---
+      function hashSeed(str) {
+        let hash = 5381;
+        for (let i = 0; i < str.length; i++) {
+          hash = ((hash << 5) + hash) + str.charCodeAt(i);
+        }
+        return Math.abs(hash);
+      }
+
+      // --- Backend-matching seededShuffle (must be top-level for all uses) ---
+      function seededShuffle(array, seed) {
+        const result = array.slice();
+        let m = result.length, t, i;
+        let s = seed;
+        while (m) {
+          s = (s * 9301 + 49297) % 233280;
+          i = Math.floor((s / 233280) * m--);
+          t = result[m];
+          result[m] = result[i];
+          result[i] = t;
+        }
+        return result;
+      }
+
+      // --- Fetch global state from Supabase or API endpoint ---
+      async function fetchGlobalState() {
+        try {
+          // Try Supabase fetch directly (skip API endpoint if not reachable)
+          const supabaseUrl = `${CONFIG.SUPABASE_URL}/rest/v1/betting_system_state?id=eq.${CONFIG.GLOBAL_STATE_ID}`;
+          const supabaseResponse = await fetch(supabaseUrl, {
+            headers: {
+              'apikey': CONFIG.SUPABASE_KEY,
+              'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}`
+            }
+          });
+          if (supabaseResponse.ok) {
+            const data = await supabaseResponse.json();
+            if (data && data.length > 0) {
+              const state = data[0];
+              return {
+                currentTimeframeIdx: state.current_timeframe_idx || 0,
+                fixtureSetIdx: state.fixture_set_idx || 0,
+                fixtureSalt: state.fixture_salt || String(state.fixture_set_idx || '0'),
+                selectedCountry: state.selected_country || 'ke',
+                matchState: state.match_state || 'pre-countdown',
+                countdown: state.countdown || 5,
+                lastUpdated: state.updated_at || new Date().toISOString(),
+                referenceEpoch: state.reference_epoch || Date.now() - 3600000,
+                matchInterval: state.match_interval || 2
+              };
+            }
+          }
+          // Last resort: Local storage
+          const localState = localStorage.getItem('globalFixtureState');
+          if (localState) {
+            return JSON.parse(localState);
+          }
+          return {
+            currentTimeframeIdx: 0,
+            fixtureSetIdx: 0,
+            fixtureSalt: '0',
+            selectedCountry: 'ke',
+            matchState: 'pre-countdown',
+            countdown: 5,
+            lastUpdated: new Date().toISOString(),
+            referenceEpoch: Date.now() - 3600000,
+            matchInterval: 2
+          };
+        } catch (error) {
+          console.error('Error fetching global state:', error);
+          return null;
+        }
+      }
+  // Inject .env values into window.ENV for local HTML testing
+  window.ENV = {
+    SUPABASE_URL: window?.ENV?.SUPABASE_URL || window?.ENV?.VITE_SUPABASE_URL || '',
+    VITE_SUPABASE_URL: window?.ENV?.VITE_SUPABASE_URL || window?.ENV?.SUPABASE_URL || '',
+    SUPABASE_KEY: window?.ENV?.SUPABASE_KEY || window?.ENV?.VITE_SUPABASE_ANON_KEY || '',
+    VITE_SUPABASE_ANON_KEY: window?.ENV?.VITE_SUPABASE_ANON_KEY || window?.ENV?.SUPABASE_KEY || '',
+    API_ENDPOINT: window?.ENV?.API_ENDPOINT || '',
+    GLOBAL_STATE_ID: window?.ENV?.GLOBAL_STATE_ID || ''
+  };
+</script>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture Outcome Predictor | Global Betting Synchronization</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-gradient: linear-gradient(135deg, #1a237e 0%, #283593 25%, #3949ab 50%, #5c6bc0 75%, #7986cb 100%);
+      --secondary-gradient: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%);
+      --live-gradient: linear-gradient(135deg, #d32f2f 0%, #f44336 50%, #ff5252 100%);
+      --betting-gradient: linear-gradient(135deg, #388e3c 0%, #4caf50 50%, #81c784 100%);
+      --accent-gold: #ffd700;
+      --accent-silver: #e0e0e0;
+      --dark-bg: #0a192f;
+      --card-bg: rgba(255, 255, 255, 0.97);
+      --text-primary: #1a237e;
+      --text-secondary: #5c6bc0;
+      --shadow-elevated: 0 25px 70px rgba(0, 40, 120, 0.35);
+      --shadow-subtle: 0 8px 32px rgba(0, 0, 0, 0.1);
+      --border-radius: 24px;
+      --transition-smooth: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+      background: var(--dark-bg);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(41, 98, 255, 0.15) 0%, transparent 20%),
+        radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.12) 0%, transparent 20%),
+        linear-gradient(45deg, rgba(10, 25, 47, 1) 0%, rgba(15, 35, 70, 1) 100%);
+      color: #333;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      margin: 30px auto;
+      position: relative;
+    }
+
+    .container::before {
+      content: '';
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      right: -10px;
+      bottom: -10px;
+      background: var(--primary-gradient);
+      border-radius: calc(var(--border-radius) + 10px);
+      z-index: -2;
+      filter: blur(25px);
+      opacity: 0.4;
+    }
+
+    .main-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow-elevated);
+      overflow: hidden;
+      position: relative;
+      backdrop-filter: blur(15px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+    }
+
+    .header-section {
+      background: var(--primary-gradient);
+      padding: 40px 40px 25px;
+      color: white;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 5px;
+      background: linear-gradient(90deg, #ffd700, #ff6b00, #ffd700);
+      animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: -200px 0; }
+      100% { background-position: 200px 0; }
+    }
+
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+
+    .logo-icon {
+      font-size: 3rem;
+      color: var(--accent-gold);
+      filter: drop-shadow(0 0 12px rgba(255, 215, 0, 0.6));
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      text-shadow: 0 3px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      font-weight: 400;
+      opacity: 0.9;
+      letter-spacing: 1px;
+      max-width: 700px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      font-size: 0.9rem;
+    }
+
+    .sync-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4CAF50;
+      animation: blink 1.5s infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .content-wrapper {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 40px;
+      padding: 40px;
+    }
+
+    @media (max-width: 900px) {
+      .content-wrapper {
+        grid-template-columns: 1fr;
+        gap: 30px;
+      }
+    }
+
+    .input-section, .results-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 25px;
+      padding-bottom: 15px;
+      border-bottom: 3px solid var(--accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      position: relative;
+    }
+
+    .section-title::after {
+      content: '';
+      position: absolute;
+      bottom: -3px;
+      left: 0;
+      width: 60px;
+      height: 3px;
+      background: var(--accent-gold);
+    }
+
+    .form-group {
+      margin-bottom: 28px;
+      position: relative;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    label i {
+      color: var(--text-secondary);
+      width: 22px;
+      font-size: 1.1rem;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 18px;
+      color: var(--text-secondary);
+      font-size: 1.2rem;
+      z-index: 1;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 18px 18px 18px 55px;
+      border: 2px solid rgba(92, 107, 192, 0.25);
+      border-radius: 14px;
+      font-size: 1.05rem;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.95);
+      color: #333;
+      transition: var(--transition-smooth);
+      box-shadow: var(--shadow-subtle);
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent-gold);
+      box-shadow: 0 0 0 4px rgba(255, 215, 0, 0.25);
+      background: white;
+      transform: translateY(-2px);
+    }
+
+    select {
+      appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c6bc0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 18px center;
+      background-size: 20px;
+      padding-right: 55px;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      margin-top: 10px;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 15px;
+    }
+
+    .button-row button {
+      flex: 1;
+    }
+
+    .main-button {
+      width: 100%;
+      padding: 22px;
+      background: var(--secondary-gradient);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 1.25rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(26, 35, 126, 0.4);
+    }
+
+    .main-button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+      transition: 0.6s;
+    }
+
+    .main-button:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 20px 40px rgba(26, 35, 126, 0.5);
+    }
+
+    .main-button:hover::before {
+      left: 100%;
+    }
+
+    .main-button:active {
+      transform: translateY(0);
+    }
+
+    .action-button {
+      padding: 16px;
+      background: linear-gradient(135deg, #6a1b9a 0%, #9c27b0 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 8px 25px rgba(106, 27, 154, 0.3);
+    }
+
+    .action-button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 30px rgba(106, 27, 154, 0.4);
+    }
+
+    .sync-button {
+      background: linear-gradient(135deg, #00796b 0%, #009688 100%);
+      box-shadow: 0 8px 25px rgba(0, 121, 107, 0.3);
+    }
+
+    .sync-button:hover {
+      box-shadow: 0 12px 30px rgba(0, 121, 107, 0.4);
+    }
+
+    .results-container {
+      background: linear-gradient(145deg, #f8f9ff 0%, #ffffff 100%);
+      border-radius: 18px;
+      padding: 30px;
+      box-shadow: var(--shadow-subtle);
+      border: 1px solid rgba(92, 107, 192, 0.2);
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      max-height: 650px;
+      position: relative;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      padding-bottom: 18px;
+      border-bottom: 2px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .league-badge {
+      background: var(--primary-gradient);
+      color: white;
+      padding: 10px 22px;
+      border-radius: 50px;
+      font-weight: 800;
+      font-size: 1.15rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 6px 20px rgba(26, 35, 126, 0.35);
+    }
+
+    .week-display {
+      background: rgba(255, 215, 0, 0.12);
+      color: var(--text-primary);
+      padding: 10px 22px;
+      border-radius: 50px;
+      font-weight: 800;
+      font-size: 1.15rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 2px solid rgba(255, 215, 0, 0.4);
+      position: relative;
+    }
+
+    .status-badge {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: white;
+      z-index: 2;
+    }
+
+    .status-live {
+      background: var(--live-gradient);
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-betting {
+      background: var(--betting-gradient);
+    }
+
+    .status-pre {
+      background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+    }
+
+    .results-list {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding-right: 15px;
+    }
+
+    .match-card {
+      background: white;
+      border-radius: 14px;
+      padding: 22px;
+      margin-bottom: 18px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+      border-left: 5px solid var(--accent-gold);
+      transition: var(--transition-smooth);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .match-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 5px;
+      height: 100%;
+      background: var(--accent-gold);
+    }
+
+    .match-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+    }
+
+    .teams {
+      flex-grow: 1;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--text-primary);
+    }
+
+    .home-team, .away-team {
+      display: block;
+      margin-bottom: 6px;
+      padding: 5px 0;
+    }
+
+    .home-team::before {
+      content: '🏠 ';
+      font-size: 1rem;
+      opacity: 0.8;
+    }
+
+    .away-team::before {
+      content: '✈️ ';
+      font-size: 1rem;
+      opacity: 0.8;
+    }
+
+    .score {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: var(--text-primary);
+      margin: 0 25px;
+      min-width: 100px;
+      text-align: center;
+      background: linear-gradient(to right, #1a237e, #5c6bc0);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+      padding: 10px;
+      background-color: rgba(92, 107, 192, 0.08);
+      border-radius: 10px;
+    }
+
+    .match-id {
+      font-size: 0.8rem;
+      color: #777;
+      margin-top: 10px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      word-break: break-all;
+      background: #f5f5f5;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #eee;
+    }
+
+    .match-time {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 5px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 60px 20px;
+      color: #888;
+      font-style: italic;
+    }
+
+    .no-results i {
+      font-size: 3.5rem;
+      margin-bottom: 20px;
+      color: #ddd;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 25px 40px;
+      background: rgba(10, 25, 47, 0.07);
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      color: #666;
+      font-size: 0.95rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 700;
+      transition: var(--transition-smooth);
+    }
+
+    .footer a:hover {
+      color: var(--accent-gold);
+      text-decoration: underline;
+    }
+
+    .global-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .global-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: rgba(92, 107, 192, 0.1);
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    /* Modal styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 25, 47, 0.92);
+      align-items: center;
+      justify-content: center;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 20px;
+      max-width: 900px;
+      width: 95vw;
+      max-height: 90vh;
+      overflow: hidden;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
+      position: relative;
+      animation: slideUp 0.4s ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .modal-header {
+      background: var(--primary-gradient);
+      color: white;
+      padding: 25px 30px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h2 {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .close-modal {
+      background: none;
+      border: none;
+      font-size: 2rem;
+      color: white;
+      cursor: pointer;
+      font-weight: 300;
+      padding: 5px;
+      line-height: 1;
+      opacity: 0.8;
+      transition: var(--transition-smooth);
+    }
+
+    .close-modal:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
+    .modal-body {
+      padding: 30px;
+      max-height: calc(90vh - 100px);
+      overflow-y: auto;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--text-secondary);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-primary);
+    }
+
+    /* Animation for match cards */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(15px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .match-card {
+      animation: fadeInUp 0.5s ease-out;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2.2rem;
+      }
+      
+      .content-wrapper {
+        padding: 25px;
+        gap: 25px;
+      }
+      
+      .header-section {
+        padding: 30px 25px 20px;
+      }
+      
+      .logo-icon {
+        font-size: 2.5rem;
+      }
+      
+      .section-title {
+        font-size: 1.3rem;
+      }
+      
+      .match-card {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+        padding: 18px;
+      }
+      
+      .score {
+        margin: 10px 0;
+        order: -1;
+        font-size: 2.5rem;
+        min-width: auto;
+        width: 100%;
+      }
+      
+      .footer {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+      }
+      
+      .button-row {
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
+      }
+      
+      .container {
+        margin: 15px auto;
+      }
+      
+      h1 {
+        font-size: 1.8rem;
+      }
+      
+      .header-section {
+        padding: 25px 20px 15px;
+      }
+      
+      .content-wrapper {
+        padding: 20px;
+      }
+      
+      .main-button {
+        padding: 20px;
+        font-size: 1.15rem;
+      }
+      
+      .modal-content {
+        width: 98vw;
+        margin: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="main-card">
+      <div class="header-section">
+        <div class="logo-container">
+          <i class="fas fa-chart-line logo-icon"></i>
+          <h1>Global Fixture Predictor</h1>
+        </div>
+        <p class="subtitle">
+          <span>Synchronized with BetXPesa Global State</span>
+          <span class="sync-status">
+            <span class="sync-dot"></span>
+            <span>Real-time Sync Active</span>
+          </span>
+        </p>
+      </div>
+      
+      <div class="content-wrapper">
+        <div class="input-section">
+          <div class="section-title">
+            <i class="fas fa-sliders-h"></i>
+            <span>Simulation Control</span>
+          </div>
+          
+          <form id="predictForm">
+
+            <div class="form-group">
+              <label for="league">
+                <i class="fas fa-trophy"></i>
+                <span>League Competition</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-trophy input-icon"></i>
+                <select id="league" name="league"></select>
+              </div>
+            </div>
+            <div id="globalLockNote" style="color:#d32f2f; font-size:0.98rem; margin-bottom:12px; text-align:center; font-weight:600;">
+              <!-- Global lock note removed: manual selection enabled -->
+            </div>
+            
+            <div class="form-group">
+              <label for="week">
+                <i class="fas fa-calendar-alt"></i>
+                <span>Week Number</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-hashtag input-icon"></i>
+                <input type="number" id="week" name="week" min="1" max="10000" value="1" required />
+              </div>
+              <div class="global-info" style="margin-top: 8px;">
+                <span class="global-item">
+                  <i class="fas fa-globe-americas"></i>
+                  <span>Global Week: <span id="globalWeekIndicator">1</span></span>
+                </span>
+                <span class="global-item">
+                  <i class="fas fa-sync"></i>
+                  <span>Last Sync: <span id="lastSync">Just now</span></span>
+                </span>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="fixtureSetIdx">
+                <i class="fas fa-random"></i>
+                <span>Fixture Set Index</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-layer-group input-icon"></i>
+                <input type="number" id="fixtureSetIdx" name="fixtureSetIdx" min="0" max="999" value="0" />
+              </div>
+              <small style="display: block; margin-top: 8px; color: #666; font-size: 0.9rem;">Cycles through different fixture arrangements (0-999)</small>
+            </div>
+            
+            <div class="form-group">
+              <label for="salt">
+                <i class="fas fa-key"></i>
+                <span>Randomization Salt</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-unlock-alt input-icon"></i>
+                <input type="text" id="salt" name="salt" value="0" placeholder="Enter deterministic seed" />
+              </div>
+              <small style="display: block; margin-top: 8px; color: #666; font-size: 0.9rem;">Same seed = same fixtures & outcomes</small>
+            </div>
+            
+            <div class="button-group">
+              <div class="button-row">
+                <button type="submit" class="main-button" id="predictButton">
+                  <i class="fas fa-bolt"></i>
+                  <span>Predict Outcomes</span>
+                </button>
+              </div>
+              
+              <div class="button-row">
+                <button type="button" class="action-button sync-button" id="syncButton">
+                  <i class="fas fa-sync-alt"></i>
+                  <span>Sync with Global</span>
+                </button>
+                <button type="button" class="action-button" id="viewFixtureBtn">
+                  <i class="fas fa-list-alt"></i>
+                  <span>View Fixtures</span>
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+        
+        <div class="results-section">
+          <div class="section-title">
+            <i class="fas fa-chart-line"></i>
+            <span>Predicted Outcomes</span>
+          </div>
+          
+          <div class="results-container">
+            <div class="results-header">
+              <div class="league-badge">
+                <i class="fas fa-flag"></i>
+                <span id="currentLeague">Kenyan Premier League</span>
+              </div>
+              <div class="week-display">
+                <i class="fas fa-calendar-week"></i>
+                <span>Week <span id="currentWeek">1</span></span>
+                <div class="status-badge status-pre" id="statusBadge">PRE</div>
+              </div>
+            </div>
+            
+            <div class="results-list" id="resultsList">
+              <div class="no-results">
+                <i class="far fa-futbol"></i>
+                <p>No predictions generated yet.<br>Configure parameters or sync with global state.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="footer">
+        <div class="global-info">
+          <span class="global-item">
+            <i class="fas fa-database"></i>
+            <span>Total Weeks: 10,000</span>
+          </span>
+          <span class="global-item">
+            <i class="fas fa-redo"></i>
+            <span>Next Sync: <span id="nextSyncCountdown">5s</span></span>
+          </span>
+        </div>
+        <div>
+          <p>© 2024 BetXPesa Analytics | <a href="#" id="refreshLink">Reset</a> | <a href="#" id="apiStatus">API Status</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fixture Modal -->
+  <div class="modal" id="fixtureModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Full Fixture Schedule</h2>
+        <button class="close-modal" id="closeFixtureModal">&times;</button>
+      </div>
+      <div class="modal-body" id="fixtureModalContent">
+        <!-- Content will be loaded here -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =================== GLOBAL CONFIGURATION ===================
+    // Load config from window.ENV (populated from .env at build/runtime) or fallback
+    const CONFIG = {
+      SUPABASE_URL: window.ENV?.SUPABASE_URL || window.ENV?.VITE_SUPABASE_URL || 'https://your-project.supabase.co',
+      SUPABASE_KEY: window.ENV?.SUPABASE_KEY || window.ENV?.VITE_SUPABASE_ANON_KEY || 'your-anon-key',
+      GLOBAL_STATE_ID: window.ENV?.GLOBAL_STATE_ID || '9597122f-1306-4732-aeb8-ff699011c727',
+      API_ENDPOINT: window.ENV?.API_ENDPOINT || 'http://localhost:3030/api/global-state',
+      SYNC_INTERVAL: 5000, // 5 seconds
+      TOTAL_WEEKS: 10000,
+      TOTAL_FIXTURE_SETS: 1000
+    };
+
+    // =================== GLOBAL STATE ===================
+    let globalState = {
+      currentTimeframeIdx: 0,
+      fixtureSetIdx: 0,
+      fixtureSalt: '0',
+      selectedCountry: 'ke',
+      matchState: 'pre-countdown',
+      countdown: 5,
+      lastUpdated: new Date().toISOString()
+    };
+
+    // Populate league dropdown
+      function populateLeagueDropdown() {
+        const leagueSelect = document.getElementById('league');
+        leagueSelect.innerHTML = '';
+        leagues.forEach(l => {
+          const opt = document.createElement('option');
+          opt.value = l.countryCode;
+          opt.textContent = `${l.flag} ${l.name} (${l.country})`;
+          leagueSelect.appendChild(opt);
+        });
+        // Always select and lock the global league
+        // If globalState.selectedCountry is not in the leagues, default to the first league
+        const defaultLeague = leagues.find(l => l.countryCode === globalState.selectedCountry) ? globalState.selectedCountry : leagues[0].countryCode;
+        leagueSelect.value = defaultLeague;
+        globalState.selectedCountry = defaultLeague;
+        leagueSelect.disabled = false;
+        document.getElementById('fixtureSetIdx').value = globalState.fixtureSetIdx;
+        document.getElementById('fixtureSetIdx').disabled = true;
+        document.getElementById('salt').value = globalState.fixtureSalt;
+        document.getElementById('salt').disabled = true;
+        document.getElementById('week').value = globalState.currentTimeframeIdx + 1;
+        document.getElementById('week').disabled = false;
+      }
+
+    // Always use global state for results
+    function updateResultsFromForm() {
+      // Always use the league selected by the user
+      const leagueCode = document.getElementById('league').value;
+      globalState.selectedCountry = leagueCode;
+      // Use the week selected by the user
+      const week = parseInt(document.getElementById('week').value, 10) || (globalState.currentTimeframeIdx + 1);
+      const fixtureSetIdx = globalState.fixtureSetIdx;
+      const salt = globalState.fixtureSalt;
+      const league = leagues.find(l => l.countryCode === leagueCode);
+      if (!league) return;
+      const fixtureSet = getFixtureSet(league, fixtureSetIdx, salt);
+      const weekObj = fixtureSet[week - 1];
+      document.getElementById('currentLeague').textContent = league.name;
+      document.getElementById('currentWeek').textContent = week;
+      displayResults(league, week, weekObj);
+    }
+
+    // Add event listeners for live update
+    window.addEventListener('DOMContentLoaded', () => {
+      populateLeagueDropdown();
+      updateResultsFromForm();
+      document.getElementById('week').addEventListener('input', updateResultsFromForm);
+      document.getElementById('league').addEventListener('change', updateResultsFromForm);
+    });
+
+    let syncTimer = null;
+    let lastSyncTime = null;
+    let isSyncing = false;
+
+    // =================== LEAGUE DATA ===================
+    // Canonical teams array from backend src/data/leagues.ts
+    const leagues = [
+      {
+        name: "Premier League",
+        country: "England",
+        countryCode: "en",
+        flag: "🇬🇧",
+        teams: [
+          { name: "Arsenal", shortName: "Arsenal", icon: "🔴" },
+          { name: "Aston Villa", shortName: "A.Villa", icon: "🦁" },
+          { name: "AFC Bournemouth", shortName: "Bournemouth", icon: "🍒" },
+          { name: "Brentford", shortName: "Brentford", icon: "🐝" },
+          { name: "Brighton & Hove Albion", shortName: "Brighton", icon: "⚪" },
+          { name: "Chelsea", shortName: "Chelsea", icon: "💙" },
+          { name: "Crystal Palace", shortName: "C.Palace", icon: "🦅" },
+          { name: "Everton", shortName: "Everton", icon: "🔵" },
+          { name: "Fulham", shortName: "Fulham", icon: "⚫" },
+          { name: "Ipswich Town", shortName: "Ipswich", icon: "🔵" },
+          { name: "Leicester City", shortName: "Leicester", icon: "🦊" },
+          { name: "Liverpool", shortName: "Liverpool", icon: "🔴" },
+          { name: "Manchester City", shortName: "Man City", icon: "💙" },
+          { name: "Manchester United", shortName: "Man Utd", icon: "😈" },
+          { name: "Newcastle United", shortName: "Newcastle", icon: "⚫" },
+          { name: "Nottingham Forest", shortName: "N.Forest", icon: "🌲" },
+          { name: "Southampton", shortName: "Southampton", icon: "⚪" },
+          { name: "Tottenham Hotspur", shortName: "Spurs", icon: "⚪" },
+          { name: "West Ham United", shortName: "West Ham", icon: "⚒️" },
+          { name: "Wolverhampton Wanderers", shortName: "Wolves", icon: "🐺" },
+        ],
+      },
+      {
+        name: "La Liga",
+        country: "Spain",
+        countryCode: "es",
+        flag: "🇪🇸",
+        teams: [
+          { name: "Alavés", shortName: "Alaves", icon: "🔵" },
+          { name: "Athletic Bilbao", shortName: "Bilbao", icon: "🦁" },
+          { name: "Atlético Madrid", shortName: "Atletico", icon: "🔴" },
+          { name: "Barcelona", shortName: "Barcelona", icon: "🔵" },
+          { name: "Cádiz", shortName: "Cadiz", icon: "💛" },
+          { name: "Celta Vigo", shortName: "Celta", icon: "⚪" },
+          { name: "Getafe", shortName: "Getafe", icon: "🔵" },
+          { name: "Girona", shortName: "Girona", icon: "🔴" },
+          { name: "Mallorca", shortName: "Mallorca", icon: "🔴" },
+          { name: "Osasuna", shortName: "Osasuna", icon: "🔴" },
+          { name: "Rayo Vallecano", shortName: "Rayo", icon: "⚡" },
+          { name: "Real Betis", shortName: "Betis", icon: "💚" },
+          { name: "Real Madrid", shortName: "Real Madrid", icon: "👑" },
+          { name: "Real Sociedad", shortName: "Sociedad", icon: "🔵" },
+          { name: "Sevilla", shortName: "Sevilla", icon: "⚪" },
+          { name: "Valencia", shortName: "Valencia", icon: "🦇" },
+          { name: "Villarreal", shortName: "Villarreal", icon: "💛" },
+          { name: "Espanyol", shortName: "Espanyol", icon: "🔵" },
+        ],
+      },
+      {
+        name: "Bundesliga",
+        country: "Germany",
+        countryCode: "de",
+        flag: "🇩🇪",
+        teams: [
+          { name: "Augsburg", shortName: "Augsburg", icon: "🔴" },
+          { name: "Bayer Leverkusen", shortName: "Leverkusen", icon: "🔴" },
+          { name: "Bayern Munich", shortName: "Bayern", icon: "🔴" },
+          { name: "Bochum", shortName: "Bochum", icon: "🔵" },
+          { name: "Borussia Dortmund", shortName: "Dortmund", icon: "💛" },
+          { name: "Borussia M'gladbach", shortName: "Gladbach", icon: "⚫" },
+          { name: "Cologne", shortName: "Cologne", icon: "🔴" },
+          { name: "Eintracht Frankfurt", shortName: "Frankfurt", icon: "🦅" },
+          { name: "Freiburg", shortName: "Freiburg", icon: "⚫" },
+          { name: "Hertha Berlin", shortName: "Hertha", icon: "🔵" },
+          { name: "Hoffenheim", shortName: "Hoffenheim", icon: "🔵" },
+          { name: "Mainz", shortName: "Mainz", icon: "🔴" },
+          { name: "RB Leipzig", shortName: "Leipzig", icon: "🐂" },
+          { name: "Schalke", shortName: "Schalke", icon: "🔵" },
+          { name: "Stuttgart", shortName: "Stuttgart", icon: "⚪" },
+          { name: "Union Berlin", shortName: "Union", icon: "🔴" },
+          { name: "Werder Bremen", shortName: "Bremen", icon: "💚" },
+          { name: "Wolfsburg", shortName: "Wolfsburg", icon: "💚" },
+        ],
+      },
+      {
+        name: "Kenyan Premier League",
+        country: "Kenya",
+        countryCode: "ke",
+        flag: "🇰🇪",
+        teams: [
+          { name: "AFC Leopards", shortName: "Leopards", icon: "🐆" },
+          { name: "Bandari", shortName: "Bandari", icon: "⚓" },
+          { name: "Bidco United", shortName: "Bidco", icon: "🏭" },
+          { name: "Gor Mahia", shortName: "Gor Mahia", icon: "💚" },
+          { name: "Kakamega Homeboyz", shortName: "Homeboyz", icon: "🏠" },
+          { name: "Kariobangi Sharks", shortName: "Sharks", icon: "🦈" },
+          { name: "KCB", shortName: "KCB", icon: "🏦" },
+          { name: "Mathare United", shortName: "Mathare", icon: "🔵" },
+          { name: "Murang'a SEAL", shortName: "Murang'a", icon: "🛡️" },
+          { name: "Nairobi City Stars", shortName: "City Stars", icon: "⭐" },
+          { name: "Nzoia Sugar", shortName: "Nzoia", icon: "🌾" },
+          { name: "Posta Rangers", shortName: "Rangers", icon: "📮" },
+          { name: "Shabana", shortName: "Shabana", icon: "⚽" },
+          { name: "Sofapaka", shortName: "Sofapaka", icon: "🛋️" },
+          { name: "Tusker", shortName: "Tusker", icon: "🍺" },
+          { name: "Ulinzi Stars", shortName: "Ulinzi", icon: "⭐" },
+          { name: "Wazito", shortName: "Wazito", icon: "💰" },
+          { name: "Zoo Kericho", shortName: "Zoo", icon: "🦁" },
+        ],
+      },
+    ];
+
+    // =================== UTILITY FUNCTIONS ===================
+    // --- Backend-matching cleanTeamNameForMatchId ---
+    function cleanTeamNameForMatchId(name) {
+      if (!name) return '';
+      let cleaned = name.toLowerCase();
+      cleaned = cleaned.replace(/[\s\.'"]+/g, "-");
+      cleaned = cleaned.replace(/[^a-z0-9-]/g, "");
+      cleaned = cleaned.replace(/-+/g, "-");
+      cleaned = cleaned.replace(/^-|-$/g, "");
+      return cleaned;
+    }
+
+    // --- Backend-matching DJB2 hashSeed ---
+    function hashSeed(str) {
+      let hash = 5381;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash) + str.charCodeAt(i);
+      }
+      return Math.abs(hash);
+    }
+
+    // --- Backend-matching seededShuffle ---
+    function seededShuffle(array, seed) {
+      const result = array.slice();
+      let m = result.length, t, i;
+      let s = seed;
+      while (m) {
+        s = (s * 9301 + 49297) % 233280;
+        i = Math.floor((s / 233280) * m--);
+        t = result[m];
+        result[m] = result[i];
+        result[i] = t;
+      }
+      return result;
+    }
+
+    // --- Backend-matching getMatchId ---
+    function getMatchId(leagueCode, weekIdx, matchIdx, homeShort, awayShort) {
+      return `league-${leagueCode}-week-${weekIdx + 1}-match-${matchIdx}-${cleanTeamNameForMatchId(homeShort)}-vs-${cleanTeamNameForMatchId(awayShort)}`;
+    }
+
+    // --- Backend-matching predictOutcome ---
+    function predictOutcome(matchId) {
+      // Use DJB2 hashSeed for determinism
+      let s = hashSeed(matchId);
+      // Simple LCG for random numbers
+      function lcg() {
+        s = (s * 9301 + 49297) % 233280;
+        return s / 233280;
+      }
+      const homeGoals = Math.floor(lcg() * 5);
+      const awayGoals = Math.floor(lcg() * 5);
+      return { homeGoals, awayGoals };
+    }
+
+    // --- Backend-matching generateDeterministicGoalTimes ---
+    function generateDeterministicGoalTimes(matchId, totalGoals) {
+      const minutes = Array.from({ length: 90 }, (_, i) => i + 1);
+      const shuffled = seededShuffle(minutes, hashSeed(matchId));
+      return shuffled.slice(0, totalGoals).sort((a, b) => a - b);
+    }
+
+    // --- Backend-matching getFixtureSet ---
+    function getFixtureSet(league, setIdx = 0, salt = '') {
+      const teams = league.teams.slice();
+      const seed = hashSeed(`${league.name || ''}_${setIdx}_${salt}`);
+      const shuffledTeams = seededShuffle(teams, seed);
+      const n = shuffledTeams.length;
+      const rounds = n - (n % 2 === 0 ? 1 : 0);
+      const weeks = [];
+      let teamsCopy = shuffledTeams.slice();
+      for (let round = 0; round < rounds; round++) {
+        const roundPairs = [];
+        for (let i = 0; i < n / 2; i++) {
+          const home = teamsCopy[i];
+          const away = teamsCopy[n - 1 - i];
+          roundPairs.push({ home, away });
+        }
+        // Rotate teams except the first
+        teamsCopy = [teamsCopy[0], ...teamsCopy.slice(-1), ...teamsCopy.slice(1, -1)];
+        weeks.push({ week: round + 1, matches: roundPairs });
+      }
+      // Repeat to reach 10,000 weeks if needed
+      let allWeeks = [];
+      while (allWeeks.length < 10000) {
+        for (const week of weeks) {
+          if (allWeeks.length >= 10000) break;
+          allWeeks.push({ week: allWeeks.length + 1, matches: week.matches });
+        }
+      }
+      return allWeeks;
+    }
+
+    async function syncWithGlobalState() {
+      if (isSyncing) return;
+      
+      isSyncing = true;
+      const syncButton = document.getElementById('syncButton');
+      const originalText = syncButton.innerHTML;
+      syncButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+      syncButton.disabled = true;
+      
+      try {
+        const newState = await fetchGlobalState();
+        if (newState) {
+          const hasChanged = 
+            globalState.currentTimeframeIdx !== newState.currentTimeframeIdx ||
+            globalState.fixtureSetIdx !== newState.fixtureSetIdx ||
+            globalState.selectedCountry !== newState.selectedCountry;
+          globalState = newState;
+          // Update UI to reflect global state (but do not force league selection unless user wants to sync)
+          updateFormWithGlobalState();
+          updateGlobalIndicators();
+          if (hasChanged) {
+            updateResultsFromForm();
+            showNotification('Global state synchronized successfully', 'success');
+          }
+          lastSyncTime = new Date();
+          updateLastSyncIndicator();
+        } else {
+          showNotification('Failed to fetch global state', 'error');
+        }
+      } catch (error) {
+        console.error('Sync error:', error);
+        showNotification('Sync error occurred', 'error');
+      } finally {
+        syncButton.innerHTML = originalText;
+        syncButton.disabled = false;
+        isSyncing = false;
+      }
+    }
+
+    function updateFormWithGlobalState() {
+      document.getElementById('league').value = globalState.selectedCountry;
+      document.getElementById('week').value = globalState.currentTimeframeIdx + 1;
+      document.getElementById('fixtureSetIdx').value = globalState.fixtureSetIdx;
+      document.getElementById('salt').value = globalState.fixtureSalt;
+      document.getElementById('globalWeekIndicator').textContent = globalState.currentTimeframeIdx + 1;
+    }
+
+    function updateGlobalIndicators() {
+      // Update status badge
+      const statusBadge = document.getElementById('statusBadge');
+      statusBadge.className = 'status-badge';
+      
+      switch (globalState.matchState) {
+        case 'playing':
+          statusBadge.classList.add('status-live');
+          statusBadge.textContent = 'LIVE';
+          break;
+        case 'betting':
+          statusBadge.classList.add('status-betting');
+          statusBadge.textContent = 'BETTING';
+          break;
+        case 'pre-countdown':
+        default:
+          statusBadge.classList.add('status-pre');
+          statusBadge.textContent = `PRE ${globalState.countdown}s`;
+          break;
+      }
+    }
+
+    function updateLastSyncIndicator() {
+      const lastSyncElement = document.getElementById('lastSync');
+      if (!lastSyncTime) {
+        lastSyncElement.textContent = 'Never';
+        return;
+      }
+      
+      const now = new Date();
+      const diffMs = now - lastSyncTime;
+      const diffSec = Math.floor(diffMs / 1000);
+      
+      if (diffSec < 60) {
+        lastSyncElement.textContent = `${diffSec}s ago`;
+      } else if (diffSec < 3600) {
+        lastSyncElement.textContent = `${Math.floor(diffSec / 60)}m ago`;
+      } else {
+        lastSyncElement.textContent = lastSyncTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
+    }
+
+    // =================== UI MANAGEMENT ===================
+    function updateUI(leagueName, weekNumber) {
+      // Always use the league from the global state
+      const league = leagues.find(l => l.countryCode === globalState.selectedCountry);
+      document.getElementById('currentLeague').textContent = league ? league.name : globalState.selectedCountry;
+      document.getElementById('currentWeek').textContent = weekNumber;
+    }
+
+    function displayResults(league, weekNumber, week) {
+      const resultsList = document.getElementById('resultsList');
+      resultsList.innerHTML = '';
+      
+      if (!week || !week.matches || week.matches.length === 0) {
+        resultsList.innerHTML = `
+          <div class="no-results">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p>No matches found for the specified parameters.</p>
+          </div>
+        `;
+        return;
+      }
+      
+      week.matches.forEach((match, idx) => {
+        const matchId = getMatchId(league.countryCode, weekNumber - 1, idx, match.home.shortName, match.away.shortName);
+        const { homeGoals, awayGoals } = predictOutcome(matchId);
+        const goalTimes = generateDeterministicGoalTimes(matchId, homeGoals + awayGoals);
+        const homeGoalTimes = goalTimes.slice(0, homeGoals).join(', ');
+        const awayGoalTimes = goalTimes.slice(homeGoals).join(', ');
+        const matchCard = document.createElement('div');
+        matchCard.className = 'match-card';
+        matchCard.style.animationDelay = `${idx * 0.05}s`;
+        matchCard.innerHTML = `
+          <div class="teams">
+            <span class="home-team">${match.home.shortName} ${homeGoalTimes ? `(${homeGoalTimes})` : ''}</span>
+            <span class="away-team">${match.away.shortName} ${awayGoalTimes ? `(${awayGoalTimes})` : ''}</span>
+            <div class="match-time">
+              <i class="far fa-clock"></i>
+              <span>Match ID: ${matchId.substring(0, 30)}...</span>
+            </div>
+            <div class="match-id">${matchId}</div>
+          </div>
+          <div class="score">${homeGoals} - ${awayGoals}</div>
+        `;
+        // Add winner indicator
+        if (homeGoals > awayGoals) {
+          matchCard.style.borderLeftColor = '#4CAF50';
+        } else if (awayGoals > homeGoals) {
+          matchCard.style.borderLeftColor = '#F44336';
+        } else {
+          matchCard.style.borderLeftColor = '#FF9800';
+        }
+        resultsList.appendChild(matchCard);
+      });
+    }
+
+    async function showCurrentGlobalWeek() {
+      const league = leagues.find(l => l.countryCode === globalState.selectedCountry);
+      if (!league) {
+        console.error('League not found:', globalState.selectedCountry);
+        return;
+      }
+      
+      const salt = globalState.fixtureSalt || String(globalState.fixtureSetIdx);
+      const fixtureSet = getFixtureSet(league, globalState.fixtureSetIdx, salt);
+      const weekIdx = globalState.currentTimeframeIdx;
+      const week = fixtureSet[weekIdx];
+      
+      if (!week) {
+        console.error('Week not found:', weekIdx);
+        return;
+      }
+      
+      updateUI(league.name, weekIdx + 1);
+      displayResults(league, weekIdx + 1, week);
+    }
+
+    function showNotification(message, type = 'info') {
+      // Create notification element
+      const notification = document.createElement('div');
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 25px;
+        background: ${type === 'success' ? '#4CAF50' : type === 'error' ? '#F44336' : '#2196F3'};
+        color: white;
+        border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        z-index: 10000;
+        animation: slideIn 0.3s ease-out;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      `;
+      
+      notification.innerHTML = `
+        <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}"></i>
+        <span>${message}</span>
+      `;
+      
+      document.body.appendChild(notification);
+      
+      // Remove after 3 seconds
+      setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => notification.remove(), 300);
+      }, 3000);
+    }
+
+    // =================== MODAL MANAGEMENT ===================
+    async function showFixtureModal() {
+      const modal = document.getElementById('fixtureModal');
+      const content = document.getElementById('fixtureModalContent');
+      
+      modal.style.display = 'flex';
+      content.innerHTML = `
+        <div style="text-align: center; padding: 40px 0; color: #666;">
+          <i class="fas fa-spinner fa-spin" style="font-size: 2.5rem; margin-bottom: 20px;"></i>
+          <p>Loading fixture schedule...</p>
+        </div>
+      `;
+      
+      try {
+        const league = leagues.find(l => l.countryCode === globalState.selectedCountry);
+        if (!league) throw new Error('League not found');
+        
+        const salt = globalState.fixtureSalt || String(globalState.fixtureSetIdx);
+        const fixtureSet = getFixtureSet(league, globalState.fixtureSetIdx, salt);
+        
+        let html = `
+          <div style="margin-bottom: 25px; text-align: center;">
+            <h3 style="color: #1a237e; margin-bottom: 10px; font-size: 1.4rem;">${league.name} (${league.country})</h3>
+            <div style="display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 20px;">
+              <span style="background: #e3f2fd; padding: 5px 15px; border-radius: 20px; font-weight: 600; color: #1565c0;">
+                <i class="fas fa-calendar"></i> Global Week: ${globalState.currentTimeframeIdx + 1}
+              </span>
+              <span style="background: #f3e5f5; padding: 5px 15px; border-radius: 20px; font-weight: 600; color: #7b1fa2;">
+                <i class="fas fa-layer-group"></i> Fixture Set: ${globalState.fixtureSetIdx}
+              </span>
+              <span style="background: #e8f5e9; padding: 5px 15px; border-radius: 20px; font-weight: 600; color: #388e3c;">
+                <i class="fas fa-key"></i> Salt: ${salt}
+              </span>
+            </div>
+          </div>
+          <div style="max-height: 60vh; overflow-y: auto; padding-right: 10px;">
+        `;
+        
+        // Show current week and next 9 weeks
+        const startWeek = Math.max(0, globalState.currentTimeframeIdx);
+        const endWeek = Math.min(fixtureSet.length, startWeek + 10);
+        
+        for (let wIdx = startWeek; wIdx < endWeek; wIdx++) {
+          const week = fixtureSet[wIdx];
+          const isCurrentWeek = wIdx === globalState.currentTimeframeIdx;
+          
+          html += `
+            <div style="margin-bottom: 25px; padding: 20px; background: ${isCurrentWeek ? '#fff8e1' : '#fafafa'}; border-radius: 12px; border-left: 4px solid ${isCurrentWeek ? '#ff9800' : '#e0e0e0'};">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h4 style="color: ${isCurrentWeek ? '#ff6d00' : '#1a237e'}; margin: 0; font-size: 1.2rem;">
+                  Week ${wIdx + 1} ${isCurrentWeek ? '🔴 CURRENT' : ''}
+                </h4>
+                <span style="font-size: 0.9rem; color: #666; background: ${isCurrentWeek ? '#ffecb3' : '#eee'}; padding: 4px 12px; border-radius: 12px;">
+                  ${week.matches.length} matches
+                </span>
+              </div>
+          `;
+          
+          week.matches.forEach((match, mIdx) => {
+            const matchId = getMatchId(league.countryCode, wIdx, mIdx, match.home.shortName, match.away.shortName);
+            const { homeGoals, awayGoals } = predictOutcome(matchId);
+            
+            html += `
+              <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; background: white; border-radius: 8px; margin-bottom: 8px; border: 1px solid #eee;">
+                <div style="flex: 1; display: flex; align-items: center; gap: 15px;">
+                  <span style="font-weight: 700; color: #1a237e; min-width: 120px; text-align: right;">${match.home.shortName}</span>
+                  <span style="color: #999;">vs</span>
+                  <span style="font-weight: 700; color: #283593; min-width: 120px;">${match.away.shortName}</span>
+                </div>
+                <div style="font-weight: 800; color: #5c6bc0; min-width: 70px; text-align: center; background: #f5f5f5; padding: 6px 12px; border-radius: 6px;">
+                  ${homeGoals} - ${awayGoals}
+                </div>
+              </div>
+            `;
+          });
+          
+          html += `</div>`;
+        }
+        
+        html += `</div>`;
+        content.innerHTML = html;
+        
+      } catch (error) {
+        console.error('Error loading fixture modal:', error);
+        content.innerHTML = `
+          <div style="text-align: center; padding: 40px 20px; color: #d32f2f;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 2.5rem; margin-bottom: 20px;"></i>
+            <p>Error loading fixture data. Please try again.</p>
+          </div>
+        `;
+      }
+    }
+
+    // =================== INITIALIZATION ===================
+    function initializeLeagueDropdown() {
+      const leagueSelect = document.getElementById('league');
+      leagueSelect.innerHTML = '';
+      
+      leagues.forEach(league => {
+        const option = document.createElement('option');
+        option.value = league.countryCode;
+        option.textContent = `${league.flag} ${league.name} (${league.country})`;
+        leagueSelect.appendChild(option);
+      });
+    }
+
+    function startSyncTimer() {
+      let countdown = CONFIG.SYNC_INTERVAL / 1000;
+      
+      syncTimer = setInterval(() => {
+        countdown--;
+        document.getElementById('nextSyncCountdown').textContent = `${countdown}s`;
+        
+        if (countdown <= 0) {
+          syncWithGlobalState();
+          countdown = CONFIG.SYNC_INTERVAL / 1000;
+        }
+      }, 1000);
+    }
+
+    async function initialize() {
+      try {
+        // Initialize UI
+        populateLeagueDropdown();
+        // Load global state (but do not override manual selection)
+        await syncWithGlobalState();
+        // Start auto-sync timer
+        startSyncTimer();
+        // Use current form values for initial display
+        updateResultsFromForm();
+        // Update API status
+        document.getElementById('apiStatus').style.color = '#4CAF50';
+        document.getElementById('apiStatus').innerHTML = '<i class="fas fa-check-circle"></i> Connected';
+        showNotification('Predictor initialized and synchronized', 'success');
+      } catch (error) {
+        console.error('Initialization error:', error);
+        showNotification('Initialization failed.', 'error');
+      }
+    }
+
+    // =================== EVENT LISTENERS ===================
+    document.getElementById('predictForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const button = document.getElementById('predictButton');
+      const originalText = button.innerHTML;
+      button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Predicting...';
+      button.disabled = true;
+      setTimeout(async () => {
+        try {
+          // Always use global state for predictions
+          updateResultsFromForm();
+          showNotification(`Predictions generated for Week ${globalState.currentTimeframeIdx + 1}`, 'success');
+        } catch (error) {
+          console.error('Prediction error:', error);
+          showNotification('Error generating predictions', 'error');
+        } finally {
+          button.innerHTML = originalText;
+          button.disabled = false;
+        }
+      }, 800);
+    });
+
+    document.getElementById('syncButton').addEventListener('click', syncWithGlobalState);
+    
+    document.getElementById('viewFixtureBtn').addEventListener('click', showFixtureModal);
+    
+    document.getElementById('closeFixtureModal').addEventListener('click', function() {
+      document.getElementById('fixtureModal').style.display = 'none';
+    });
+    
+    document.getElementById('fixtureModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        this.style.display = 'none';
+      }
+    });
+    
+    document.getElementById('refreshLink').addEventListener('click', function(e) {
+      e.preventDefault();
+      initialize();
+    });
+    
+    document.getElementById('apiStatus').addEventListener('click', async function(e) {
+      e.preventDefault();
+      const statusElement = this;
+      const originalText = statusElement.innerHTML;
+      
+      statusElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+      
+      try {
+        const state = await fetchGlobalState();
+        if (state) {
+          statusElement.innerHTML = '<i class="fas fa-check-circle"></i> Connected';
+          statusElement.style.color = '#4CAF50';
+          showNotification('API connection successful', 'success');
+        } else {
+          throw new Error('No response');
+        }
+      } catch (error) {
+        statusElement.innerHTML = '<i class="fas fa-times-circle"></i> Disconnected';
+        statusElement.style.color = '#F44336';
+        showNotification('API connection failed', 'error');
+        
+        setTimeout(() => {
+          statusElement.innerHTML = originalText;
+          statusElement.style.color = '';
+        }, 3000);
+      }
+    });
+
+    // =================== START APPLICATION ===================
+    document.addEventListener('DOMContentLoaded', initialize);
+    
+    // Add CSS for notifications
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(style);
+  </script>
+</body>
+</html>

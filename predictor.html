@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture Outcome Predictor | Elite Football Analytics</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    :root {
+      --primary-gradient: linear-gradient(135deg, #1a237e 0%, #283593 25%, #3949ab 50%, #5c6bc0 75%, #7986cb 100%);
+      --secondary-gradient: linear-gradient(135deg, #0d47a1 0%, #1565c0 50%, #1976d2 100%);
+      --accent-gold: #ffd700;
+      --accent-silver: #e0e0e0;
+      --dark-bg: #0a192f;
+      --card-bg: rgba(255, 255, 255, 0.95);
+      --text-primary: #1a237e;
+      --text-secondary: #5c6bc0;
+      --shadow-elevated: 0 20px 60px rgba(0, 40, 120, 0.3);
+      --shadow-subtle: 0 8px 32px rgba(0, 0, 0, 0.08);
+      --border-radius: 24px;
+      --transition-smooth: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+      background: var(--dark-bg);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(41, 98, 255, 0.1) 0%, transparent 20%),
+        radial-gradient(circle at 90% 80%, rgba(255, 215, 0, 0.08) 0%, transparent 20%),
+        linear-gradient(45deg, rgba(10, 25, 47, 1) 0%, rgba(15, 35, 70, 1) 100%);
+      color: #333;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 900px;
+      margin: 40px auto;
+      position: relative;
+    }
+
+    .container::before {
+      content: '';
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      right: -10px;
+      bottom: -10px;
+      background: var(--primary-gradient);
+      border-radius: calc(var(--border-radius) + 10px);
+      z-index: -2;
+      filter: blur(20px);
+      opacity: 0.6;
+    }
+
+    .main-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: var(--shadow-elevated);
+      overflow: hidden;
+      position: relative;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .header-section {
+      background: var(--primary-gradient);
+      padding: 40px 40px 30px;
+      color: white;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--accent-gold);
+    }
+
+    .header-section::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .logo-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+
+    .logo-icon {
+      font-size: 2.8rem;
+      color: var(--accent-gold);
+      filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.5));
+    }
+
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      font-weight: 400;
+      opacity: 0.9;
+      letter-spacing: 1px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .content-wrapper {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      padding: 40px;
+    }
+
+    @media (max-width: 768px) {
+      .content-wrapper {
+        grid-template-columns: 1fr;
+        gap: 30px;
+      }
+    }
+
+    .input-section, .results-section {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 25px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--accent-gold);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .section-title i {
+      color: var(--accent-gold);
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    label i {
+      color: var(--text-secondary);
+      width: 20px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 16px;
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      z-index: 1;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 16px 16px 16px 50px;
+      border: 2px solid rgba(92, 107, 192, 0.3);
+      border-radius: 12px;
+      font-size: 1rem;
+      font-weight: 500;
+      background: rgba(255, 255, 255, 0.9);
+      color: #333;
+      transition: var(--transition-smooth);
+      box-shadow: var(--shadow-subtle);
+    }
+
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--accent-gold);
+      box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.2);
+      background: white;
+    }
+
+    select {
+      appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235c6bc0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      background-size: 18px;
+      padding-right: 50px;
+    }
+
+    .button-container {
+      margin-top: 30px;
+      position: relative;
+      overflow: hidden;
+      border-radius: 12px;
+      box-shadow: 0 10px 20px rgba(26, 35, 126, 0.3);
+    }
+
+    button {
+      width: 100%;
+      padding: 20px;
+      background: var(--secondary-gradient);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      letter-spacing: 0.5px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transition: 0.6s;
+    }
+
+    button:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 30px rgba(26, 35, 126, 0.4);
+    }
+
+    button:hover::before {
+      left: 100%;
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .results-container {
+      background: linear-gradient(145deg, #f8f9ff 0%, #ffffff 100%);
+      border-radius: 16px;
+      padding: 30px;
+      box-shadow: var(--shadow-subtle);
+      border: 1px solid rgba(92, 107, 192, 0.15);
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      max-height: 500px;
+    }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    }
+
+    .league-badge {
+      background: var(--primary-gradient);
+      color: white;
+      padding: 8px 18px;
+      border-radius: 50px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(26, 35, 126, 0.3);
+    }
+
+    .week-display {
+      background: rgba(255, 215, 0, 0.1);
+      color: var(--text-primary);
+      padding: 8px 18px;
+      border-radius: 50px;
+      font-weight: 700;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255, 215, 0, 0.3);
+    }
+
+    .results-list {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding-right: 10px;
+    }
+
+    .match-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+      border-left: 4px solid var(--accent-gold);
+      transition: var(--transition-smooth);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .match-card:hover {
+      transform: translateX(5px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .teams {
+      flex-grow: 1;
+      font-weight: 600;
+      font-size: 1.1rem;
+      color: var(--text-primary);
+    }
+
+    .home-team, .away-team {
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .home-team::before {
+      content: '🏠 ';
+      font-size: 0.9rem;
+    }
+
+    .away-team::before {
+      content: '✈️ ';
+      font-size: 0.9rem;
+    }
+
+    .score {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin: 0 20px;
+      min-width: 80px;
+      text-align: center;
+      background: linear-gradient(to right, #1a237e, #5c6bc0);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .match-id {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 8px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      word-break: break-all;
+    }
+
+    .no-results {
+      text-align: center;
+      padding: 40px 20px;
+      color: #888;
+      font-style: italic;
+    }
+
+    .no-results i {
+      font-size: 3rem;
+      margin-bottom: 20px;
+      color: #ddd;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 25px 40px;
+      background: rgba(10, 25, 47, 0.05);
+      border-top: 1px solid rgba(0, 0, 0, 0.05);
+      color: #666;
+      font-size: 0.9rem;
+    }
+
+    .footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--text-secondary);
+      border-radius: 10px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-primary);
+    }
+
+    /* Animation for match cards */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .match-card {
+      animation: fadeInUp 0.5s ease-out;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      h1 {
+        font-size: 2rem;
+      }
+      
+      .content-wrapper {
+        padding: 25px;
+      }
+      
+      .header-section {
+        padding: 30px 25px 20px;
+      }
+      
+      .logo-icon {
+        font-size: 2.2rem;
+      }
+      
+      .section-title {
+        font-size: 1.3rem;
+      }
+      
+      .match-card {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+      }
+      
+      .score {
+        margin: 10px 0;
+        order: -1;
+        font-size: 2.2rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 10px;
+      }
+      
+      .container {
+        margin: 20px auto;
+      }
+      
+      h1 {
+        font-size: 1.7rem;
+      }
+      
+      .header-section {
+        padding: 25px 20px 15px;
+      }
+      
+      .content-wrapper {
+        padding: 20px;
+      }
+      
+      button {
+        padding: 18px;
+        font-size: 1.1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="main-card">
+      <div class="header-section">
+        <div class="logo-container">
+          <i class="fas fa-futbol logo-icon"></i>
+          <h1>Fixture Outcome Predictor</h1>
+        </div>
+        <p class="subtitle">Elite Football Analytics Engine • Deterministic Match Simulation</p>
+      </div>
+      
+      <div class="content-wrapper">
+        <div class="input-section">
+          <button id="viewFixtureBtn" style="margin: 18px 0 0 0; width: 100%; padding: 14px; background: linear-gradient(90deg, #0078d4 60%, #005fa3 100%); color: #fff; border: none; border-radius: 8px; font-size: 1.1em; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px #0078d422;">View Full Fixture List</button>
+          <div id="fixtureModal" style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100vw; height:100vh; background:rgba(10,25,47,0.85); align-items:center; justify-content:center;">
+            <div style="background:#fff; border-radius:18px; max-width:800px; width:95vw; max-height:90vh; overflow-y:auto; box-shadow:0 8px 40px #0008; padding:36px 28px 28px 28px; position:relative;">
+              <button id="closeFixtureModal" style="position:absolute; top:18px; right:18px; background:none; border:none; font-size:1.7rem; color:#283593; cursor:pointer; font-weight:bold;">&times;</button>
+              <h2 style="font-size:1.5rem; font-weight:800; color:#1a237e; margin-bottom:18px; text-align:center;">Full Fixture List (Global State)</h2>
+              <div id="fixtureModalContent" style="font-size:1.08rem;"></div>
+            </div>
+          </div>
+          <div class="section-title">
+            <i class="fas fa-sliders-h"></i>
+            <span>Simulation Parameters</span>
+          </div>
+          
+          <form id="predictForm">
+            <div class="form-group">
+              <label for="league">
+                <i class="fas fa-trophy"></i>
+                <span>League Competition</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-trophy input-icon"></i>
+                <select id="league" name="league"></select>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="week">
+                <i class="fas fa-calendar-alt"></i>
+                <span>Week Number</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-hashtag input-icon"></i>
+                <input type="number" id="week" name="week" min="1" value="1" required />
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="fixtureSetIdx">
+                <i class="fas fa-random"></i>
+                <span>Fixture Set Index</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-layer-group input-icon"></i>
+                <input type="number" id="fixtureSetIdx" name="fixtureSetIdx" min="0" value="0" />
+              </div>
+              <small style="display: block; margin-top: 8px; color: #666; font-size: 0.85rem;">Adjust to generate alternative fixture schedules</small>
+            </div>
+            
+            <div class="form-group">
+              <label for="salt">
+                <i class="fas fa-key"></i>
+                <span>Randomization Salt</span>
+              </label>
+              <div class="input-wrapper">
+                <i class="fas fa-unlock-alt input-icon"></i>
+                <input type="text" id="salt" name="salt" value="0" placeholder="Enter seed value" />
+              </div>
+              <small style="display: block; margin-top: 8px; color: #666; font-size: 0.85rem;">Deterministic seed for reproducible results</small>
+            </div>
+            
+            <div class="button-container">
+              <button type="submit" id="predictButton">
+                <i class="fas fa-bolt"></i>
+                <span>Simulate Match Outcomes</span>
+              </button>
+            </div>
+          </form>
+        </div>
+        
+        <div class="results-section">
+          <div class="section-title">
+            <i class="fas fa-chart-line"></i>
+            <span>Predicted Outcomes</span>
+          </div>
+          
+          <div class="results-container">
+            <div class="results-header">
+              <div class="league-badge">
+                <i class="fas fa-flag"></i>
+                <span id="currentLeague">Premier League</span>
+              </div>
+              <div class="week-display">
+                <i class="fas fa-calendar-week"></i>
+                <span>Week <span id="currentWeek">1</span></span>
+              </div>
+            </div>
+            
+            <div class="results-list" id="resultsList">
+              <div class="no-results">
+                <i class="far fa-futbol"></i>
+                <p>No predictions generated yet.<br>Configure parameters and run simulation.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="footer">
+        <p>© 2023 Elite Football Analytics | Deterministic prediction engine v2.1 | <a href="#" id="refreshLink">Reset Simulation</a></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Global State Constants ---
+    const SYSTEM_STATE_ID = '9597122f-1306-4732-aeb8-ff699011c727';
+    const totalWeeks = 10000;
+    const totalFixtureSets = 4; // Based on your leagues array
+
+    // --- Modal logic for full fixture list ---
+    const fixtureModal = document.getElementById('fixtureModal');
+    const fixtureModalContent = document.getElementById('fixtureModalContent');
+
+    document.getElementById('viewFixtureBtn').addEventListener('click', async function() {
+        fixtureModal.style.display = 'flex';
+        fixtureModalContent.innerHTML = '<div style="text-align:center; padding:40px 0; color:#888;"><i class="fas fa-spinner fa-spin" style="font-size:2.2rem;"></i><br>Loading fixture list...</div>';
+        try {
+            const state = await getGlobalSystemState();
+            if (!state) {
+                fixtureModalContent.innerHTML = '<div style="color:#b00; text-align:center;">Failed to fetch global state.</div>';
+                return;
+            }
+            const league = leagues.find(l => l.countryCode === state.selectedCountry);
+            if (!league) {
+                fixtureModalContent.innerHTML = '<div style="color:#b00; text-align:center;">League not found for global state.</div>';
+                return;
+            }
+            const salt = state.fixtureSalt || String(state.fixtureSetIdx || '0');
+            const fixtureSet = getFixtureSet(league, state.fixtureSetIdx, salt);
+            let html = `
+                <div style="margin-bottom:18px; text-align:center; font-size:1.1rem; color:#3949ab; font-weight:700;">
+                    ${league.name} (${league.country})<br>
+                    <span style="font-size:0.9rem; color:#666;">
+                        Current Global Week: <b>${state.currentTimeframeIdx + 1}</b> | 
+                        Fixture Set: <b>${state.fixtureSetIdx}</b> | 
+                        Salt: <b>${salt}</b>
+                    </span>
+                </div>
+                <div style="max-height:60vh; overflow-y:auto; padding-right:10px;">
+            `;
+            // Show current week and next 20 weeks
+            const startWeek = Math.max(0, state.currentTimeframeIdx);
+            const endWeek = Math.min(fixtureSet.length, startWeek + 21);
+            for (let wIdx = startWeek; wIdx < endWeek; wIdx++) {
+                const week = fixtureSet[wIdx];
+                const isCurrentWeek = wIdx === state.currentTimeframeIdx;
+                html += `
+                    <div style="margin-bottom:18px; border-bottom:1px solid #eee; padding-bottom:10px; ${isCurrentWeek ? 'border-left:4px solid #ffd700; padding-left:10px; background:#f8f9ff;' : ''}">
+                        <div style="font-weight:700; ${isCurrentWeek ? 'color:#ff6b00;' : 'color:#1565c0;'} margin-bottom:7px;">
+                            Week ${wIdx + 1} ${isCurrentWeek ? ' 🔴 LIVE' : ''}
+                        </div>
+                `;
+                week.matches.forEach((match, mIdx) => {
+                    const matchId = getMatchId(league.countryCode, wIdx, mIdx, match.home.shortName, match.away.shortName);
+                    const { homeGoals, awayGoals } = predictOutcome(matchId);
+                    html += `
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px; padding:8px; background:${isCurrentWeek ? '#fffaf0' : '#fff'}; border-radius:6px;">
+                            <div style="display:flex; align-items:center; gap:12px; flex:1;">
+                                <span style="font-weight:600; color:#1a237e; min-width:110px; text-align:right;">${match.home.shortName}</span>
+                                <span style="color:#888;">vs</span>
+                                <span style="font-weight:600; color:#283593; min-width:110px;">${match.away.shortName}</span>
+                            </div>
+                            <div style="font-weight:800; color:#5c6bc0; min-width:60px; text-align:center; background:rgba(92, 107, 192, 0.1); padding:4px 8px; border-radius:4px;">
+                                ${homeGoals} - ${awayGoals}
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+            fixtureModalContent.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading fixture modal:', error);
+            fixtureModalContent.innerHTML = '<div style="color:#b00; text-align:center;">Error loading fixture data.</div>';
+        }
+    });
+
+    document.getElementById('closeFixtureModal').addEventListener('click', function() {
+        fixtureModal.style.display = 'none';
+    });
+
+    // Close modal on outside click
+    fixtureModal.addEventListener('click', function(e) {
+        if (e.target === fixtureModal) fixtureModal.style.display = 'none';
+    });
+
+    // --- League/team data (backend-matching, with shortName) ---
+    const leagues = [
+      {
+        name: "Premier League",
+        country: "England",
+        countryCode: "en",
+        teams: [
+          { name: "Arsenal", shortName: "Arsenal" },
+          { name: "Aston Villa", shortName: "A.Villa" },
+          { name: "AFC Bournemouth", shortName: "Bournemouth" },
+          { name: "Brentford", shortName: "Brentford" },
+          { name: "Brighton & Hove Albion", shortName: "Brighton" },
+          { name: "Chelsea", shortName: "Chelsea" },
+          { name: "Crystal Palace", shortName: "C.Palace" },
+          { name: "Everton", shortName: "Everton" },
+          { name: "Fulham", shortName: "Fulham" },
+          { name: "Ipswich Town", shortName: "Ipswich" },
+          { name: "Leicester City", shortName: "Leicester" },
+          { name: "Liverpool", shortName: "Liverpool" },
+          { name: "Manchester City", shortName: "Man City" },
+          { name: "Manchester United", shortName: "Man Utd" },
+          { name: "Newcastle United", shortName: "Newcastle" },
+          { name: "Nottingham Forest", shortName: "N.Forest" },
+          { name: "Southampton", shortName: "Southampton" },
+          { name: "Tottenham Hotspur", shortName: "Spurs" },
+          { name: "West Ham United", shortName: "West Ham" },
+          { name: "Wolverhampton Wanderers", shortName: "Wolves" },
+        ],
+      },
+      {
+        name: "La Liga",
+        country: "Spain",
+        countryCode: "es",
+        teams: [
+          { name: "Alavés", shortName: "Alaves" },
+          { name: "Athletic Bilbao", shortName: "Bilbao" },
+          { name: "Atlético Madrid", shortName: "Atletico" },
+          { name: "Barcelona", shortName: "Barcelona" },
+          { name: "Cádiz", shortName: "Cadiz" },
+          { name: "Celta Vigo", shortName: "Celta" },
+          { name: "Getafe", shortName: "Getafe" },
+          { name: "Girona", shortName: "Girona" },
+          { name: "Mallorca", shortName: "Mallorca" },
+          { name: "Osasuna", shortName: "Osasuna" },
+          { name: "Rayo Vallecano", shortName: "Rayo" },
+          { name: "Real Betis", shortName: "Betis" },
+          { name: "Real Madrid", shortName: "Real Madrid" },
+          { name: "Real Sociedad", shortName: "Sociedad" },
+          { name: "Sevilla", shortName: "Sevilla" },
+          { name: "Valencia", shortName: "Valencia" },
+          { name: "Villarreal", shortName: "Villarreal" },
+          { name: "Espanyol", shortName: "Espanyol" },
+        ],
+      },
+      {
+        name: "Bundesliga",
+        country: "Germany",
+        countryCode: "de",
+        teams: [
+          { name: "Augsburg", shortName: "Augsburg" },
+          { name: "Bayer Leverkusen", shortName: "Leverkusen" },
+          { name: "Bayern Munich", shortName: "Bayern" },
+          { name: "Bochum", shortName: "Bochum" },
+          { name: "Borussia Dortmund", shortName: "Dortmund" },
+          { name: "Borussia M'gladbach", shortName: "Gladbach" },
+          { name: "Cologne", shortName: "Cologne" },
+          { name: "Eintracht Frankfurt", shortName: "Frankfurt" },
+          { name: "Freiburg", shortName: "Freiburg" },
+          { name: "Hertha Berlin", shortName: "Hertha" },
+          { name: "Hoffenheim", shortName: "Hoffenheim" },
+          { name: "Mainz", shortName: "Mainz" },
+          { name: "RB Leipzig", shortName: "Leipzig" },
+          { name: "Schalke", shortName: "Schalke" },
+          { name: "Stuttgart", shortName: "Stuttgart" },
+          { name: "Union Berlin", shortName: "Union" },
+          { name: "Werder Bremen", shortName: "Bremen" },
+          { name: "Wolfsburg", shortName: "Wolfsburg" },
+        ],
+      },
+      {
+        name: "Kenyan Premier League",
+        country: "Kenya",
+        countryCode: "ke",
+        teams: [
+          { name: "AFC Leopards", shortName: "Leopards" },
+          { name: "Bandari", shortName: "Bandari" },
+          { name: "Bidco United", shortName: "Bidco" },
+          { name: "Gor Mahia", shortName: "Gor Mahia" },
+          { name: "Kakamega Homeboyz", shortName: "Homeboyz" },
+          { name: "Kariobangi Sharks", shortName: "Sharks" },
+          { name: "KCB", shortName: "KCB" },
+          { name: "Mathare United", shortName: "Mathare" },
+          { name: "Murang'a SEAL", shortName: "Murang'a" },
+          { name: "Nairobi City Stars", shortName: "City Stars" },
+          { name: "Nzoia Sugar", shortName: "Nzoia" },
+          { name: "Posta Rangers", shortName: "Rangers" },
+          { name: "Shabana", shortName: "Shabana" },
+          { name: "Sofapaka", shortName: "Sofapaka" },
+          { name: "Tusker", shortName: "Tusker" },
+          { name: "Ulinzi Stars", shortName: "Ulinzi" },
+          { name: "Wazito", shortName: "Wazito" },
+          { name: "Zoo Kericho", shortName: "Zoo" },
+        ],
+      },
+    ];
+
+    // --- Utility Functions ---
+    function cleanTeamNameForMatchId(name) {
+        if (!name) return '';
+        let cleaned = name.toLowerCase();
+        cleaned = cleaned.replace(/[\s\.'"]+/g, "-");
+        cleaned = cleaned.replace(/[^a-z0-9-]/g, "");
+        cleaned = cleaned.replace(/-+/g, "-");
+        cleaned = cleaned.replace(/^-|-$/g, "");
+        return cleaned;
+    }
+
+    function hashStringToInt(s) {
+        let h = 2166136261 >>> 0;
+        for (let i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = Math.imul(h, 16777619);
+        }
+        return h >>> 0;
+    }
+
+    function createLCG(seed) {
+        let state = (seed || 1) >>> 0;
+        return function rand() {
+            state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+            return state / 4294967296;
+        };
+    }
+
+    function predictOutcome(matchId) {
+        const rand = createLCG(hashStringToInt(matchId));
+        const homeGoals = Math.floor(rand() * 5);
+        const awayGoals = Math.floor(rand() * 5);
+        return { homeGoals, awayGoals };
+    }
+
+    function getMatchId(leagueCode, weekIdx, matchIdx, homeShort, awayShort) {
+        return `league-${leagueCode}-week-${weekIdx + 1}-match-${matchIdx}-${cleanTeamNameForMatchId(homeShort)}-vs-${cleanTeamNameForMatchId(awayShort)}`;
+    }
+
+    function seededShuffle(array, seed) {
+        const arr = array.slice();
+        let m = arr.length, t, i;
+        let random = createLCG(seed);
+        while (m) {
+            i = Math.floor(random() * m--);
+            t = arr[m];
+            arr[m] = arr[i];
+            arr[i] = t;
+        }
+        return arr;
+    }
+
+    function getFixtureSet(league, setIdx = 0, salt = '') {
+        const teams = league.teams.slice();
+        const seed = hashStringToInt(`${league.name || ''}_${setIdx}_${salt}`);
+        const shuffledTeams = seededShuffle(teams, seed);
+        const n = shuffledTeams.length;
+        const rounds = n - (n % 2 === 0 ? 1 : 0);
+        const weeks = [];
+        let teamsCopy = shuffledTeams.slice();
+        for (let round = 0; round < rounds; round++) {
+            const roundPairs = [];
+            for (let i = 0; i < n / 2; i++) {
+                const home = teamsCopy[i];
+                const away = teamsCopy[n - 1 - i];
+                roundPairs.push({ home, away });
+            }
+            teamsCopy = [teamsCopy[0], ...teamsCopy.slice(-1), ...teamsCopy.slice(1, -1)];
+            weeks.push({ week: round + 1, matches: roundPairs });
+        }
+        let allWeeks = [];
+        while (allWeeks.length < totalWeeks) {
+            for (const week of weeks) {
+                if (allWeeks.length >= totalWeeks) break;
+                allWeeks.push({ week: allWeeks.length + 1, matches: week.matches });
+            }
+        }
+        return allWeeks;
+    }
+
+    // --- Global State Functions ---
+    async function getGlobalSystemState() {
+        // (Deprecated legacy predictor.html warning removed)
+        // Please use the React Predictor page for deterministic parity and live sync with BetXPesa.
+        // (Deprecated alert removed)
+        return null;
+    }
+
+    // --- Real-time Global State Synchronization ---
+    let globalState = null;
+    let isSyncing = false;
+
+    async function syncWithGlobalState() {
+        if (isSyncing) return;
+        isSyncing = true;
+        try {
+            const newState = await getGlobalSystemState();
+            if (newState && (!globalState || 
+                globalState.currentTimeframeIdx !== newState.currentTimeframeIdx ||
+                globalState.fixtureSetIdx !== newState.fixtureSetIdx)) {
+                globalState = newState;
+                // Update form values to match global state
+                leagueSelect.value = globalState.selectedCountry;
+                document.getElementById('week').value = globalState.currentTimeframeIdx + 1;
+                document.getElementById('fixtureSetIdx').value = globalState.fixtureSetIdx;
+                document.getElementById('salt').value = globalState.fixtureSalt;
+                // Show the current global week matches
+                await showCurrentGlobalWeek();
+            }
+        } catch (error) {
+            console.error('Sync error:', error);
+        } finally {
+            isSyncing = false;
+        }
+    }
+
+    async function showCurrentGlobalWeek() {
+        if (!globalState) {
+            await syncWithGlobalState();
+            return;
+        }
+        const league = leagues.find(l => l.countryCode === globalState.selectedCountry);
+        if (!league) {
+            console.error('League not found:', globalState.selectedCountry);
+            return;
+        }
+        const salt = globalState.fixtureSalt || String(globalState.fixtureSetIdx);
+        const fixtureSet = getFixtureSet(league, globalState.fixtureSetIdx, salt);
+        const weekIdx = globalState.currentTimeframeIdx;
+        const week = fixtureSet[weekIdx];
+        updateUI(league.name, weekIdx + 1);
+        displayResults(league, weekIdx + 1, week);
+        // Update week display with status indicator
+        const weekDisplay = document.getElementById('currentWeek');
+        weekDisplay.textContent = `${weekIdx + 1} `;
+        // Add status indicator
+        let statusIndicator = '';
+        switch (globalState.matchState) {
+            case 'playing':
+                statusIndicator = ' 🔴 LIVE';
+                break;
+            case 'betting':
+                statusIndicator = ' ⏰ Betting';
+                break;
+            case 'pre-countdown':
+                statusIndicator = ` ⏱️ ${globalState.countdown}s`;
+                break;
+            default:
+                statusIndicator = '';
+        }
+        const weekElement = document.querySelector('.week-display span');
+        if (weekElement) {
+            weekElement.innerHTML = `Week <span id="currentWeek">${weekIdx + 1}</span>${statusIndicator}`;
+        }
+    }
+
+    // --- Populate league dropdown ---
+    const leagueSelect = document.getElementById('league');
+    leagues.forEach(l => {
+        const opt = document.createElement('option');
+        opt.value = l.countryCode;
+        opt.textContent = `${l.name} (${l.country})`;
+        leagueSelect.appendChild(opt);
+    });
+
+    // --- Update UI elements ---
+    function updateUI(leagueName, weekNumber) {
+        document.getElementById('currentLeague').textContent = leagueName;
+        document.getElementById('currentWeek').textContent = weekNumber;
+    }
+
+    // --- Display results in the results list ---
+    async function displayResults(league, weekNumber, week) {
+      const resultsList = document.getElementById('resultsList');
+      resultsList.innerHTML = '';
+      // Try to fetch fixture from /sharedtimeframebetting page and parse DOM for fixture table/list
+      try {
+        const resp = await fetch('/sharedtimeframebetting');
+        const html = await resp.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        // Try to find a fixture table or list for the current week
+        // Adjust selectors as needed to match your admin page structure
+        // Example: table with class 'fixture-table' and data-week attribute
+        let matches = [];
+        // Try table-based extraction first
+        let table = doc.querySelector('table.fixture-table[data-week]');
+        if (!table) {
+          // Try to find the first table with class 'fixture-table'
+          table = doc.querySelector('table.fixture-table');
+        }
+        if (table) {
+          // Find the row for the current week
+          let weekRows = table.querySelectorAll('tbody tr');
+          weekRows.forEach(row => {
+            // Assume columns: Home | Away (adjust if needed)
+            const cells = row.querySelectorAll('td');
+            if (cells.length >= 2) {
+              const home = cells[0].textContent.trim();
+              const away = cells[1].textContent.trim();
+              matches.push({ home: { shortName: home }, away: { shortName: away } });
+            }
+          });
+        } else {
+          // Try to find a list-based fixture (e.g., ul/li or divs)
+          const fixtureList = doc.querySelectorAll('.fixture-list .fixture-match, .fixture-list li');
+          fixtureList.forEach(item => {
+            // Try to extract home and away from text or child spans
+            let home = '', away = '';
+            const spans = item.querySelectorAll('span');
+            if (spans.length >= 2) {
+              home = spans[0].textContent.trim();
+              away = spans[1].textContent.trim();
+            } else {
+              // Fallback: split by 'vs' or '-'
+              const txt = item.textContent;
+              const parts = txt.split(/vs|-/i);
+              if (parts.length >= 2) {
+                home = parts[0].trim();
+                away = parts[1].trim();
+              }
+            }
+            if (home && away) {
+              matches.push({ home: { shortName: home }, away: { shortName: away } });
+            }
+          });
+        }
+        if (matches.length > 0) {
+          matches.forEach((match, idx) => {
+            const matchId = getMatchId(league.countryCode, weekNumber - 1, idx, match.home.shortName, match.away.shortName);
+            const { homeGoals, awayGoals } = predictOutcome(matchId);
+            const matchCard = document.createElement('div');
+            matchCard.className = 'match-card';
+            matchCard.style.animationDelay = `${idx * 0.05}s`;
+            matchCard.innerHTML = `
+              <div class="teams">
+                <span class="home-team">${match.home.shortName}</span>
+                <span class="away-team">${match.away.shortName}</span>
+                <div class="match-id">${matchId}</div>
+              </div>
+              <div class="score">${homeGoals} - ${awayGoals}</div>
+            `;
+            resultsList.appendChild(matchCard);
+          });
+          return;
+        }
+      } catch (err) {
+        // Fallback to local generation if fetch or parse fails
+        console.warn('Could not fetch fixture from /sharedtimeframebetting, using local generation.', err);
+      }
+      // Fallback: use local week if fetch fails
+      if (!week || week.matches.length === 0) {
+        resultsList.innerHTML = `
+          <div class="no-results">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p>No matches found for the specified parameters.</p>
+          </div>
+        `;
+        return;
+      }
+      week.matches.forEach((match, idx) => {
+        const matchId = getMatchId(league.countryCode, weekNumber - 1, idx, match.home.shortName, match.away.shortName);
+        const { homeGoals, awayGoals } = predictOutcome(matchId);
+        const matchCard = document.createElement('div');
+        matchCard.className = 'match-card';
+        matchCard.style.animationDelay = `${idx * 0.05}s`;
+        matchCard.innerHTML = `
+          <div class="teams">
+            <span class="home-team">${match.home.shortName}</span>
+            <span class="away-team">${match.away.shortName}</span>
+            <div class="match-id">${matchId}</div>
+          </div>
+          <div class="score">${homeGoals} - ${awayGoals}</div>
+        `;
+        resultsList.appendChild(matchCard);
+      });
+    }
+
+    // --- Page Load and Event Handlers ---
+    // Initialize on page load
+    async function initialize() {
+        await syncWithGlobalState();
+        // Start periodic sync (every 5 seconds)
+        setInterval(syncWithGlobalState, 5000);
+    }
+
+    // Handle form submission
+    document.getElementById('predictForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const button = document.getElementById('predictButton');
+        const originalText = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Simulating...</span>';
+        button.disabled = true;
+        setTimeout(() => {
+            const countryCode = leagueSelect.value;
+            const weekNumber = parseInt(document.getElementById('week').value, 10);
+            const fixtureSetIdx = parseInt(document.getElementById('fixtureSetIdx').value, 10) || 0;
+            const salt = document.getElementById('salt').value || String(fixtureSetIdx);
+            const league = leagues.find(l => l.countryCode === countryCode);
+            if (!league) {
+                alert('League not found.');
+                button.innerHTML = originalText;
+                button.disabled = false;
+                return;
+            }
+            const fixtureSet = getFixtureSet(league, fixtureSetIdx, salt);
+            const weekIdx = weekNumber - 1;
+            const week = fixtureSet[weekIdx];
+            if (!week) {
+                alert('Week not found. Please select a valid week number.');
+                button.innerHTML = originalText;
+                button.disabled = false;
+                return;
+            }
+            updateUI(league.name, weekNumber);
+            displayResults(league, weekNumber, week);
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }, 800);
+    });
+
+    // Reset functionality - syncs back to global state
+    document.getElementById('refreshLink').addEventListener('click', async function(e) {
+        e.preventDefault();
+        await syncWithGlobalState();
+    });
+
+    // Sync button click handler (add this button to your HTML if needed)
+    // <button id="syncButton" style="margin-top: 10px; background: #4CAF50; color: white; padding: 10px; border: none; border-radius: 5px;">🔄 Sync with Global</button>
+    const syncButton = document.createElement('button');
+    syncButton.id = 'syncButton';
+    syncButton.innerHTML = '<i class="fas fa-sync-alt"></i> Sync with Global State';
+    syncButton.style.cssText = 'margin: 18px 0 0 0; width: 100%; padding: 14px; background: linear-gradient(90deg, #28a745 60%, #1e7e34 100%); color: #fff; border: none; border-radius: 8px; font-size: 1.1em; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px #28a74522;';
+    syncButton.addEventListener('click', async function() {
+        syncButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+        syncButton.disabled = true;
+        await syncWithGlobalState();
+        setTimeout(() => {
+            syncButton.innerHTML = '<i class="fas fa-sync-alt"></i> Sync with Global State';
+            syncButton.disabled = false;
+        }, 1000);
+    });
+    // Add sync button after the view fixture button
+    document.getElementById('viewFixtureBtn').parentNode.appendChild(syncButton);
+    // Start the application
+    initialize();
+  </script>
+</body>
+</html>

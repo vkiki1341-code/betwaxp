@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fixture Outcome Predictor</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(120deg, #e0eafc 0%, #cfdef3 100%);
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 480px;
+      margin: 48px auto;
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 8px 32px #0002;
+      padding: 40px 32px 32px 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    h1 {
+      text-align: center;
+      font-size: 2.1em;
+      font-weight: 700;
+      color: #0078d4;
+      margin-bottom: 18px;
+      letter-spacing: 1px;
+    }
+    label {
+      display: block;
+      margin-top: 18px;
+      font-weight: 600;
+      color: #333;
+      font-size: 1.05em;
+    }
+    select, input {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border-radius: 6px;
+      border: 1px solid #cfd8dc;
+      font-size: 1em;
+      background: #f7fafd;
+      transition: border-color 0.2s;
+      box-sizing: border-box;
+    }
+    select:focus, input:focus {
+      border-color: #0078d4;
+      outline: none;
+    }
+    button {
+      margin-top: 28px;
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(90deg, #0078d4 60%, #005fa3 100%);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1.15em;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 8px #0078d422;
+      transition: background 0.2s, box-shadow 0.2s;
+    }
+    button:hover {
+      background: linear-gradient(90deg, #005fa3 60%, #0078d4 100%);
+      box-shadow: 0 4px 16px #0078d422;
+    }
+    .outcomes {
+      background: linear-gradient(120deg, #f7fafd 0%, #e0eafc 100%);
+      padding: 28px 22px 22px 22px;
+      border-radius: 18px;
+      margin-top: 38px;
+      font-size: 1.12em;
+      color: #222;
+      border: none;
+      min-height: 120px;
+      box-shadow: 0 8px 32px #0078d422, 0 1.5px 0 #0078d411 inset;
+      transition: box-shadow 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      overflow-x: auto;
+      position: relative;
+    }
+    .outcomes .header {
+      font-weight: 700;
+      color: #005fa3;
+      font-size: 1.18em;
+      margin-bottom: 12px;
+      letter-spacing: 0.7px;
+      text-shadow: 0 1px 0 #e0eafc;
+      border-bottom: 1.5px solid #e3eaf2;
+      padding-bottom: 8px;
+    }
+    .outcome-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(90deg, #eaf4fb 60%, #f7fafd 100%);
+      border-radius: 12px;
+      padding: 14px 18px;
+      box-shadow: 0 2px 12px #0078d411, 0 1px 0 #fff inset;
+      font-size: 1.08em;
+      font-weight: 500;
+      transition: box-shadow 0.2s, background 0.2s;
+      border: 1px solid #e3eaf2;
+      position: relative;
+    }
+    .outcome-row:hover {
+      box-shadow: 0 4px 24px #0078d422, 0 2px 0 #fff inset;
+      background: linear-gradient(90deg, #d2e6f7 60%, #f7fafd 100%);
+      z-index: 1;
+    }
+    .outcome-row .teams {
+      color: #222;
+      font-weight: 700;
+      font-size: 1.08em;
+      letter-spacing: 0.2px;
+      text-shadow: 0 1px 0 #e0eafc;
+    }
+    .outcome-row .score {
+      color: #0078d4;
+      font-weight: 800;
+      font-size: 1.15em;
+      margin-left: 18px;
+      text-shadow: 0 1px 0 #e0eafc;
+      background: #e0eafc;
+      border-radius: 6px;
+      padding: 4px 12px;
+      box-shadow: 0 1px 4px #0078d411;
+    }
+    .outcome-row .matchid {
+      color: #888;
+      font-size: 0.95em;
+      margin-left: 24px;
+      font-weight: 400;
+      font-family: 'Fira Mono', 'Consolas', monospace;
+      background: #f7fafd;
+      border-radius: 4px;
+      padding: 2px 8px;
+      opacity: 0.85;
+    }
+    @media (max-width: 600px) {
+      .container {
+        max-width: 98vw;
+        padding: 18px 6vw 18px 6vw;
+      }
+      h1 {
+        font-size: 1.3em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Fixture Outcome Predictor</h1>
+    <form id="predictForm">
+      <label for="league">League</label>
+      <select id="league" name="league"></select>
+      <label for="week">Week Number</label>
+      <input type="number" id="week" name="week" min="1" value="1" required />
+      <label for="fixtureSetIdx">Fixture Set Index</label>
+      <input type="number" id="fixtureSetIdx" name="fixtureSetIdx" min="0" value="0" />
+      <label for="salt">Salt</label>
+      <input type="text" id="salt" name="salt" value="0" />
+      <button type="submit">Predict Outcomes</button>
+    </form>
+    <pre id="output"></pre>
+  </div>
+  <script>
+    // --- League/team data (same as script) ---
+    const leagues = [
+      {
+        name: "Premier League",
+        country: "England",
+        countryCode: "en",
+        teams: [
+          { name: "Arsenal", shortName: "Arsenal" },
+          { name: "Aston Villa", shortName: "A.Villa" },
+          { name: "AFC Bournemouth", shortName: "Bournemouth" },
+          { name: "Brentford", shortName: "Brentford" },
+          { name: "Brighton & Hove Albion", shortName: "Brighton" },
+          { name: "Chelsea", shortName: "Chelsea" },
+          { name: "Crystal Palace", shortName: "C.Palace" },
+          { name: "Everton", shortName: "Everton" },
+          { name: "Fulham", shortName: "Fulham" },
+          { name: "Ipswich Town", shortName: "Ipswich" },
+          { name: "Leicester City", shortName: "Leicester" },
+          { name: "Liverpool", shortName: "Liverpool" },
+          { name: "Manchester City", shortName: "Man City" },
+          { name: "Manchester United", shortName: "Man Utd" },
+          { name: "Newcastle United", shortName: "Newcastle" },
+          { name: "Nottingham Forest", shortName: "N.Forest" },
+          { name: "Southampton", shortName: "Southampton" },
+          { name: "Tottenham Hotspur", shortName: "Spurs" },
+          { name: "West Ham United", shortName: "West Ham" },
+          { name: "Wolverhampton Wanderers", shortName: "Wolves" },
+        ],
+      },
+      {
+        name: "La Liga",
+        country: "Spain",
+        countryCode: "es",
+        teams: [
+          { name: "Alavés", shortName: "Alaves" },
+          { name: "Athletic Bilbao", shortName: "Bilbao" },
+          { name: "Atlético Madrid", shortName: "Atletico" },
+          { name: "Barcelona", shortName: "Barcelona" },
+          { name: "Cádiz", shortName: "Cadiz" },
+          { name: "Celta Vigo", shortName: "Celta" },
+          { name: "Getafe", shortName: "Getafe" },
+          { name: "Girona", shortName: "Girona" },
+          { name: "Mallorca", shortName: "Mallorca" },
+          { name: "Osasuna", shortName: "Osasuna" },
+          { name: "Rayo Vallecano", shortName: "Rayo" },
+          { name: "Real Betis", shortName: "Betis" },
+          { name: "Real Madrid", shortName: "Real Madrid" },
+          { name: "Real Sociedad", shortName: "Sociedad" },
+          { name: "Sevilla", shortName: "Sevilla" },
+          { name: "Valencia", shortName: "Valencia" },
+          { name: "Villarreal", shortName: "Villarreal" },
+          { name: "Espanyol", shortName: "Espanyol" },
+        ],
+      },
+      {
+        name: "Bundesliga",
+        country: "Germany",
+        countryCode: "de",
+        teams: [
+          { name: "Augsburg", shortName: "Augsburg" },
+          { name: "Bayer Leverkusen", shortName: "Leverkusen" },
+          { name: "Bayern Munich", shortName: "Bayern" },
+          { name: "Bochum", shortName: "Bochum" },
+          { name: "Borussia Dortmund", shortName: "Dortmund" },
+          { name: "Borussia M'gladbach", shortName: "Gladbach" },
+          { name: "Cologne", shortName: "Cologne" },
+          { name: "Eintracht Frankfurt", shortName: "Frankfurt" },
+          { name: "Freiburg", shortName: "Freiburg" },
+          { name: "Hertha Berlin", shortName: "Hertha" },
+          { name: "Hoffenheim", shortName: "Hoffenheim" },
+          { name: "Mainz", shortName: "Mainz" },
+          { name: "RB Leipzig", shortName: "Leipzig" },
+          { name: "Schalke", shortName: "Schalke" },
+          { name: "Stuttgart", shortName: "Stuttgart" },
+          { name: "Union Berlin", shortName: "Union" },
+          { name: "Werder Bremen", shortName: "Bremen" },
+          { name: "Wolfsburg", shortName: "Wolfsburg" },
+        ],
+      },
+      {
+        name: "Kenyan Premier League",
+        country: "Kenya",
+        countryCode: "ke",
+        teams: [
+          { name: "AFC Leopards", shortName: "Leopards" },
+          { name: "Bandari", shortName: "Bandari" },
+          { name: "Bidco United", shortName: "Bidco" },
+          { name: "Gor Mahia", shortName: "Gor Mahia" },
+          { name: "Kakamega Homeboyz", shortName: "Homeboyz" },
+          { name: "Kariobangi Sharks", shortName: "Sharks" },
+          { name: "KCB", shortName: "KCB" },
+          { name: "Mathare United", shortName: "Mathare" },
+          { name: "Murang'a SEAL", shortName: "Murang'a" },
+          { name: "Nairobi City Stars", shortName: "City Stars" },
+          { name: "Nzoia Sugar", shortName: "Nzoia" },
+          { name: "Posta Rangers", shortName: "Rangers" },
+          { name: "Shabana", shortName: "Shabana" },
+          { name: "Sofapaka", shortName: "Sofapaka" },
+          { name: "Tusker", shortName: "Tusker" },
+          { name: "Ulinzi Stars", shortName: "Ulinzi" },
+          { name: "Wazito", shortName: "Wazito" },
+          { name: "Zoo Kericho", shortName: "Zoo" },
+        ],
+      },
+    ];
+
+    function cleanTeamNameForMatchId(name) {
+      if (!name) return '';
+      let cleaned = name.toLowerCase();
+      cleaned = cleaned.replace(/[\s\.'"]+/g, "-");
+      cleaned = cleaned.replace(/[^a-z0-9-]/g, "");
+      cleaned = cleaned.replace(/-+/g, "-");
+      cleaned = cleaned.replace(/^-|-$/g, "");
+      return cleaned;
+    }
+
+    function hashStringToInt(s) {
+      let h = 2166136261 >>> 0;
+      for (let i = 0; i < s.length; i++) {
+        h ^= s.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    }
+
+    function createLCG(seed) {
+      let state = (seed || 1) >>> 0;
+      return function rand() {
+        state = (Math.imul(1664525, state) + 1013904223) >>> 0;
+        return state / 4294967296;
+      };
+    }
+
+    function predictOutcome(matchId) {
+      const rand = createLCG(hashStringToInt(matchId));
+      const homeGoals = Math.floor(rand() * 5);
+      const awayGoals = Math.floor(rand() * 5);
+      return { homeGoals, awayGoals };
+    }
+
+    function getMatchId(leagueCode, weekIdx, matchIdx, homeShort, awayShort) {
+      return `league-${leagueCode}-week-${weekIdx + 1}-match-${matchIdx}-${cleanTeamNameForMatchId(homeShort)}-vs-${cleanTeamNameForMatchId(awayShort)}`;
+    }
+
+    function seededShuffle(array, seed) {
+      const arr = array.slice();
+      let m = arr.length, t, i;
+      let random = createLCG(seed);
+      while (m) {
+        i = Math.floor(random() * m--);
+        t = arr[m];
+        arr[m] = arr[i];
+        arr[i] = t;
+      }
+      return arr;
+    }
+
+    function getFixtureSet(league, setIdx = 0, salt = '') {
+      const teams = league.teams.slice();
+      const seed = hashStringToInt(`${league.name || ''}_${setIdx}_${salt}`);
+      const shuffledTeams = seededShuffle(teams, seed);
+      const n = shuffledTeams.length;
+      const rounds = n - (n % 2 === 0 ? 1 : 0);
+      const weeks = [];
+      let teamsCopy = shuffledTeams.slice();
+      for (let round = 0; round < rounds; round++) {
+        const roundPairs = [];
+        for (let i = 0; i < n / 2; i++) {
+          const home = teamsCopy[i];
+          const away = teamsCopy[n - 1 - i];
+          roundPairs.push({ home, away });
+        }
+        teamsCopy = [teamsCopy[0], ...teamsCopy.slice(-1), ...teamsCopy.slice(1, -1)];
+        weeks.push({ week: round + 1, matches: roundPairs });
+      }
+      let allWeeks = [];
+      while (allWeeks.length < 10000) {
+        for (const week of weeks) {
+          if (allWeeks.length >= 10000) break;
+          allWeeks.push({ week: allWeeks.length + 1, matches: week.matches });
+        }
+      }
+      return allWeeks;
+    }
+
+    // Populate league dropdown
+    const leagueSelect = document.getElementById('league');
+    leagues.forEach(l => {
+      const opt = document.createElement('option');
+      opt.value = l.countryCode;
+      opt.textContent = `${l.name} (${l.country})`;
+      leagueSelect.appendChild(opt);
+    });
+
+    document.getElementById('predictForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const countryCode = leagueSelect.value;
+      const weekNumber = parseInt(document.getElementById('week').value, 10);
+      const fixtureSetIdx = parseInt(document.getElementById('fixtureSetIdx').value, 10) || 0;
+      const salt = document.getElementById('salt').value || String(fixtureSetIdx);
+      const league = leagues.find(l => l.countryCode === countryCode);
+      if (!league) {
+        document.getElementById('output').textContent = 'League not found.';
+        return;
+      }
+      const fixtureSet = getFixtureSet(league, fixtureSetIdx, salt);
+      const weekIdx = weekNumber - 1;
+      const week = fixtureSet[weekIdx];
+      if (!week) {
+        document.getElementById('output').textContent = 'Week not found.';
+        return;
+      }
+      let out = `Simulated outcomes for ${league.name}, Week ${weekNumber}, fixtureSetIdx=${fixtureSetIdx}, salt='${salt}'\n`;
+      week.matches.forEach((match, idx) => {
+        const matchId = getMatchId(league.countryCode, weekIdx, idx, match.home.shortName, match.away.shortName);
+        const { homeGoals, awayGoals } = predictOutcome(matchId);
+        out += `${match.home.shortName} vs ${match.away.shortName}: ${homeGoals} - ${awayGoals} (matchId: ${matchId})\n`;
+      });
+      document.getElementById('output').textContent = out;
+    });
+  </script>
+</body>
+</html>

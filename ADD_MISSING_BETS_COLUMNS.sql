@@ -1,0 +1,21 @@
+-- Add missing columns to bets table to match match_results
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS complited VARCHAR(3) NOT NULL DEFAULT 'no' CHECK (complited IN ('yes', 'no'));
+
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS match_id VARCHAR(255);
+
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS result VARCHAR(10);
+
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS home_goals INTEGER;
+
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS away_goals INTEGER;
+
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS winner VARCHAR(20);
+
+ALTER TABLE bets
+ADD COLUMN IF NOT EXISTS is_final VARCHAR(3) NOT NULL DEFAULT 'no' CHECK (is_final IN ('yes', 'no'));
